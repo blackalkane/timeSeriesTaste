@@ -1,0 +1,309 @@
+---
+title: "STAT 443 Project: Foreign Exchange Rates between Norwegian krone and USD"
+author: "Jessica Sun, Oscar Ovanger, Serena Yu, Yuting Wen"
+date: "4/8/2020"
+output: 
+  rmarkdown::pdf_document:
+    fig_caption: yes        
+    includes:  
+      in_header: my_header.tex
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tseries)
+library(forecast)
+library(dplyr)
+# helper function for checking distribution of in-sample errors
+# refer to Reference
+plotForecastErrors <- function(forecasterrors)
+  {
+    mybinsize <- IQR(forecasterrors, na.rm = TRUE)/4
+    mysd   <- sd(forecasterrors, na.rm = TRUE)
+    mymin  <- min(forecasterrors, na.rm = TRUE) - mysd*5
+    mymax  <- max(forecasterrors, na.rm = TRUE) + mysd*3
+    mynorm <- rnorm(10000, mean=0, sd=mysd)
+    mymin2 <- min(mynorm, na.rm = TRUE)
+    mymax2 <- max(mynorm, na.rm = TRUE)
+    if (mymin2 < mymin ) { mymin <- mymin2}
+    if (mymax2 > mymax) { mymax <- mymax2}
+    mybins <- seq(mymin, mymax, mybinsize)
+    hist(forecasterrors, col="red", freq=FALSE, breaks=mybins, main="")
+    myhist <- hist(mynorm, plot=FALSE, breaks=mybins)
+    points(myhist$mids, myhist$density, type="l", col="blue", lwd=2)
+}
+```
+
+```{r, message=F, warning=F, echo=FALSE}
+# data loading and processing
+dat <- read.csv("Foreign_Exchange_Rates.csv")
+# only working on NORWEGIAN-USD, rebuild dataframe
+dat <- dat[,c(2,19)]
+# Assign meaningful variable names
+colnames(dat) <- c("Period","NORWEGIAN-USD")
+# data pre-processing
+for (i in 1:dim(dat)[1]) {
+  if (dat[i,]$`NORWEGIAN-USD` == "ND") {
+    dat[i,]$`NORWEGIAN-USD` = NA
+  }
+}
+dat <- dat[!is.na(dat$`NORWEGIAN-USD`),]
+dat[,1] <- as.Date(dat$Period)
+dat[,2] <- as.numeric(as.character(dat$`NORWEGIAN-USD`))
+```
+
+```{r, message=F, warning=F, echo=FALSE}
+# data aggregation
+dat.agg <- dat %>% mutate(period = format(Period, "%Y-%m")) %>% group_by(period) %>% summarise(`NORUSD` = mean(`NORWEGIAN-USD`)) 
+```
+
+```{r, message=F, warning=F, echo=FALSE}
+# ts converted
+dat.ts <- ts(dat.agg$NORUSD,frequency=12,start=c(2000,1))
+```
+
+
+## Introduction
+
+An exchange rate is the value of a country’s currency in terms of another country’s currency. The exchange rate can influence exports and imports of a country. Therefore, it is necessary and essential to predict and forecast the exchange rate to evaluate the risks of international trade. The Norwegian krone to USD is the most common way to trade the Norwegian currency. Refer to **Reference** for more detail.
+
+The main objective of our report is to accurately predict future foreign exchange rate between Norwegian krone and USD by conducting time series analysis.
+
+The datasets were generated on the Federal Reserve's Download Data Program. Since the only interest is in predicting foreign exchange rates between Norwegian krone and USD, only 2 features are selected:
+
+- Period (daily from 2000-01-01 to 2019-12-31)
+- foreign exchange rate Norwegian krone/USD in percentage
+
+In total, there are 5019 observations, with missing value removed.
+
+To reduce the dimension of our data, all observations in the same year and month are aggregated into a group because of the assumption that the exchange rate does not fluctuate a lot during a month. The mean of the observations in each group is collected to represent the foreign exchange rate of each year and month. The summary statistics are displayed in **Table 1**.
+
+| Name  | Type | Example        |
+| :------------ | :-----------: | -------------------: |
+| Period     | Date   | 2000-01 |
+| Norwegian krone/USD (%)     | Quantitative  | 8.024125 |
+
+Table: Data Description
+
+
+## Analysis
+
+
+### Exploratory Analysis
+
+Before any prediction on the future foreign exchange rate between Norwegian krone and USD was made, exploratory data analysis was performed to explore and visualize the main characteristics of our dataset.
+
+The plot of Norwegian krone/USD (%) from 2000 to 2019 is displayed in **Figure 1**.
+
+To better visualize the main characteristics of our data, decomposition is applied to separate the data into a trend component, a seasonal component,  and an irregular component. The corresponding plot is displayed **Figure 2**. 
+
+```{r, message=F, warning=F, echo=FALSE, fig.cap="NORWEGIAN-USD in percentage 2000-2019",fig.width=6,fig.height=4}
+# EDA
+plot.ts(dat.ts,xlab="Period",ylab="NOR-USD (%)")
+```
+
+
+```{r, message=F, warning=F, echo=FALSE, fig.cap="Decomposition",fig.width=6,fig.height=4}
+# Analysis/Model fitting
+# decompose
+dat.ts.de <- decompose(dat.ts)
+plot(dat.ts.de)
+```
+
+
+**Figure 1** shows that the exchange rate falls sharply and continuously from its peak at around 9.1 in 2000 to its lowest point at around 4.95 in 2008 and gradually picks up from 2012. After decomposing the time series (**Figure 2**), it is evident that there is a seasonality, which the exchange rate exhibits fluctuation annually. Furthermore, the exchange rate falls approximately from 2000 to 2008 and experiences a four-year slump until 2012 except for a short-term increase in 2009. After that, the exchange rates grow steadily.
+
+
+
+### Forecast
+
+
+#### - Holt-Winters Exponential Smoothing
+
+Based on the exploratory analysis above, Holt-Winters Exponential Smoothing is applied with all parameters (alpha, beta, and gamma) used. 
+
+Parameters: alpha, beta, and gamma, for the estimates of the level, slope b of the trend component, and the seasonal component, respectively, at the current time point. The parameters alpha, beta, and gamma all have values between 0 and 1, and values that are close to 0 mean that relatively little weight is placed on the most recent observations when making forecasts of future values.
+
+The results of Holt-Winters Exponential Smoothing is displayed in **Table 2**.
+
+```{r, message=F, warning=F, echo=FALSE}
+# Exponential smoothing methods
+# forecast
+dat.fore <- HoltWinters(dat.ts)
+```
+| alpha  | beta | gamma        |
+| :------------ | :-----------: | -------------------: |
+| 0.824     | 0.000913          | 1.00 |
+
+Table: values of Holt-Winters Exponential Smoothing parameters
+
+The estimated values of alpha, beta, and gamma are 0.82, 0.0009, and 1.00 from **Table 2**, respectively. The value of alpha (0.82) and gamma (1.00) is high, indicating that the estimate of the level and seasonal component at the current time point is just based upon very recent observations. The value of beta is close to 0, indicating that the estimate of the slope b of the trend component is not updated over the time series, and instead is set equal to its initial value.
+
+To visualize the performance of Holt-Winters Exponential Smoothing, a plot that the original time series is a black line, with the forecasted values as a red line on top of that is displayed in **Figure 3**.
+
+```{r, message=F, warning=F, echo=FALSE, fig.cap="Holt-Winters Observed value v.s. Fitted value",fig.width=6,fig.height=4}
+plot(dat.fore, main="") # pretty well
+```
+
+**Figure 3** shows that the in-sample forecasts fit well with the observed values, although they tend to lag behind the observed values a little bit.
+
+
+Forecasts for future times (12 months from 2020-01 to 2020-12) not included in the original time series is performed (**Figure 4**). The forecasts are shown as a blue line, and the purple and gray shaded areas show 80% and 95% prediction intervals, respectively.
+
+```{r, message=F, warning=F, echo=FALSE, fig.cap="Holt-Winters Exponential Smoothing: Prediction Interval from 2020-01 to 2020-12",fig.width=6,fig.height=4}
+# actual prediction
+dat.fore2 <- forecast:::forecast.HoltWinters(dat.fore, h=12)
+forecast:::plot.forecast(dat.fore2,main="")
+```
+
+To investigate whether the predictive model can be improved, the in-sample forecast errors, which show non-zero autocorrelations at lags, are performed by making a correlogram and carrying out the Ljung-Box test. Whether the forecast errors have constant variance over time and are normally distributed with mean zero are also checked by making a time plot of the forecast errors and a histogram. Please refer to **Figure 5**, **Figure 6**, **Figure 7**.
+
+```{r, message=F, warning=F, echo=FALSE, fig.show="hide"}
+temp <- acf(na.remove(dat.fore2$residuals))
+```
+
+```{r, message=F, warning=F, echo=FALSE, fig.cap="Holt-Winters Exponential Smoothing: Correlogram of in-sample forecast errors",fig.width=6,fig.height=4}
+plot(temp,main="")
+```
+
+```{r, message=F, warning=F, echo=FALSE, eval=FALSE}
+# set eval as TRUE to see the results
+Box.test(dat.fore2$residuals, type="Ljung-Box") # non-sig, limitations
+```
+
+The correlogram (**Figure 5**) shows that the sample autocorrelation for the in-sample forecast errors at lag 1 and lag 8 exceeds the significance bounds. The p-value got from the Ljung-Box test (4.168e-12) is under a 5% significance level. The results indicate that there is evidence of non-zero autocorrelations in the in-sample forecast errors.
+
+
+```{r, message=F, warning=F, echo=FALSE, fig.cap="Holt-Winters Exponential Smoothing: Time Plot of the Forecast Errors",fig.width=6,fig.height=4}
+plot.ts(dat.fore2$residuals) 
+```
+
+```{r, message=F, warning=F, echo=FALSE, fig.cap="Holt-Winters Exponential Smoothing: Histogram of the Forecast Errors",fig.width=6,fig.height=4}
+plotForecastErrors(dat.fore2$residuals) # const variance, normally distributed
+```
+
+
+The time plot (**Figure 6**) shows that the forecast errors have constant variance over time. The histogram of forecast errors (**Figure 7**) supports that the forecast errors are normally distributed with mean zero.
+
+In conclusion, although the forecast errors appear to be normally distributed with mean zero and constant variance over time, there is evidence of autocorrelation for the forecast errors. This suggests that the Holt-Winters exponential smoothing model can be improved, and the assumptions upon which the prediction intervals were based are not valid.
+
+#### - ARIMA
+
+Since there is a limitation of using Holt-Winters Exponential Smoothing, ARIMA model is applied by taking correlations in the data into account
+
+ARIMA models are defined for stationary time series, the correlogram of the data is displayed in **Figure 8**.
+
+```{r, message=F, warning=F, echo=FALSE, fig.show="hide"}
+temp <- acf(dat.ts)
+```
+
+```{r, message=F, warning=F, echo=FALSE, fig.cap="Correlogram of the Original Series",fig.width=6,fig.height=4}
+# ARIMA
+plot(temp,main="")
+```
+
+The Augmented Dickey-Fuller test is also applied with the null hypothesis that the time series is non-stationary.
+
+```{r, message=F, warning=F, echo=FALSE, eval=FALSE}
+# set eval as TRUE to see the results
+adf.test(dat.ts) # not stationary, diff
+```
+
+The correlogram (**Figure 8**) shows slow decay. The p-value from the Augmented Dickey-Fuller test is 0.7164, which shows little evidence against the null hypothesis that the time series is non-stationary. The results suggest that the original series is non-stationary, which means applying the ARIMA model is invalid.
+
+To obtain a stationary time series, differencing with lag 1 is applied. 
+
+The plot, the correlogram and the partial correlogram of the differenced data are displayed (**Figure 9**, **Figure 10**, **Figure 11**). Augmented Dickey-Fuller test based on the differenced data is also performed.
+
+```{r, message=F, warning=F, echo=FALSE, fig.cap="First Difference of the Original Series",fig.width=5,fig.height=3}
+dat.diff <- diff(dat.ts,differences=1)
+plot.ts(dat.diff)
+```
+
+```{r, message=F, warning=F, echo=FALSE, eval=FALSE}
+# set eval as TRUE to see the results
+adf.test(dat.diff) # stationary
+```
+
+```{r, message=F, warning=F, echo=FALSE, fig.show="hide"}
+temp <- acf(dat.diff)
+```
+
+```{r, message=F, warning=F, echo=FALSE, fig.cap="The Correlogram of First Differenced Series",fig.width=6,fig.height=4}
+plot(temp,main="")
+```
+
+```{r, message=F, warning=F, echo=FALSE, fig.show="hide"}
+temp <- pacf(dat.diff)
+```
+
+```{r, message=F, warning=F, echo=FALSE, fig.cap="The Partial Correlogram of First Differenced Series",fig.width=6,fig.height=4}
+plot(temp,main="")
+```
+
+It appears in **Figure 10** that the ACF of the First Differenced Series is decaying, also the p-value from the Augmented Dickey-Fuller test is 0.01 (support the alternate hypothesis), which is consistent with a stationary process. There are also no significant values after lag 1 and the ACF plot tails off like a sine wave as lag increases. Besides, no notable pattern was found in the partial correlogram of the series in **Figure 11**. Consequently, we decide the value of p and q to be 0 and 1. Since we make a difference with lag 1, the final model we choose is ARIMA(0,1,1).
+
+Forecasts for future times (12 months from 2020-01 to 2020-12) not included in the original time series is performed (**Figure 12**). The forecasts are shown as a blue line, and the purple and gray shaded areas show 80% and 95% prediction intervals, respectively.
+
+```{r, message=F, warning=F, echo=FALSE, fig.cap="ARIMA: Prediction Interval from 2020-01 to 2020-12",fig.width=6,fig.height=4}
+# double check which model is the best
+model.arima <- auto.arima(dat.diff) # arima(0,1,1) works best
+
+dat.model <- arima(dat.ts,order=c(0,1,1))
+
+dat.model.fore <- forecast:::forecast.Arima(dat.model,h=12)
+
+forecast:::plot.forecast(dat.model.fore,main="")
+```
+
+Similarly, to investigate whether the predictive model can be improved, the in-sample forecast errors are performed by making a correlogram and carrying out the Ljung-Box test. Whether the forecast errors have constant variance over time and are normally distributed with mean zero are also checked by making a time plot of the forecast errors and a histogram. Please refer to **Figure 13**, **Figure 14**, **Figure 15**.
+
+```{r, message=F, warning=F, echo=FALSE, fig.show="hide"}
+temp <- acf(dat.model.fore$residuals)
+```
+
+```{r, message=F, warning=F, echo=FALSE, fig.cap="ARIMA: Correlogram of in-sample forecast errors",fig.width=6,fig.height=4}
+plot(temp, main="")
+```
+
+```{r, message=F, warning=F, echo=FALSE, eval=FALSE}
+# set eval as TRUE to see the results
+Box.test(dat.model.fore$residuals, type="Ljung-Box") # very little evidence for non-zero autocorrelations in the forecast errors
+```
+
+The correlogram (**Figure 13**) shows that the sample autocorrelation for the in-sample forecast errors at lag 14 exceeds the significance level. However, we would expect one in twenty of the autocorrelations for the first twenty lags to exceed the 95% significance bounds by chance alone. The p-value got from the Ljung-Box test (0.8779) is above 5% significance level. The results indicate that there is little evidence of non-zero autocorrelations in the in-sample forecast errors.
+
+```{r, message=F, warning=F, echo=FALSE, fig.cap="ARIMA: Time Plot of the Forecast Errors",fig.width=6,fig.height=4}
+plot.ts(dat.model.fore$residuals)
+```
+
+```{r, message=F, warning=F, echo=FALSE, fig.cap="ARIMA: Histogram of the Forecast Errors",fig.width=6,fig.height=4}
+plotForecastErrors(dat.model.fore$residuals)
+```
+
+The time plot of the in-sample forecast errors (**Figure 14**) shows that the variance of the forecast errors seems to be roughly constant over time. The histogram of the time series (**Figure 15**) shows that the forecast errors are roughly normally distributed and the mean seems to be close to zero. The results suggest that the forecast errors are normally distributed with mean zero and constant variance.
+
+In conclusion, successive forecast errors do not seem to be correlated, and the forecast errors seem to be normally distributed with mean zero and constant variance, the ARIMA(0,1,1) does seem to provide an adequate predictive model for our data, and there is no improvement needed.
+
+## Conclusion
+
+From the exploratory data analysis, we had found that the NORWEGIAN-USD exchange rate from 2000-01 to 2019-12 showed a clear trend and seasonality. Holt-Winters Exponential Smoothing and ARIMA(0,1,1) was able to fit the data well since the in-sample forecast errors had constant variance over time and were normally distributed with mean zero. The Ljung-Box test indicated that the in-sample forecast errors are independent with a 5% significance level for ARIMA(0,1,1) while not for Holt-Winters Exponential Smoothing. Hence we chose ARIMA(0,1,1) to make our 2020 prediction.
+
+\pagebreak
+
+## Reference
+
+- Khan, M. Y., & Jain, P. K. Financial Management. Text, Problems and cases. Fourth Edition. Tata McGraw Hill Publishing Company Ltd. P.
+
+
+- USD/NOK. Daily FX. [accessed 2020 Apr 5].https://www.dailyfx.com/usd-nok.
+
+
+- https://a-little-book-of-r-for-time-series.readthedocs.io/en/latest/src/timeseries.html
+
+- https://www.kaggle.com/brunotly/foreign-exchange-rates-per-dollar-20002019
+
+
+## Acknowledgement
+
+We would like to acknowledge our deep sense of gratitude and profound thanks to our teaching assistant Vittorio Rommaniello for his inspiring guidance and patient instructions on our analysis throughout the project.
