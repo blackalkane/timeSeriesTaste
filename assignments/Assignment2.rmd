@@ -1,0 +1,111 @@
+---
+title: "Assignment2"
+author: "Oscar Ovanger"
+date: "25/03/2020"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+UNIVERSITY OF BRITISH COLUMBIA
+Department of Statistics
+STAT 443: Time Series and Forecasting
+Assignment 2: Analysis in the Frequency Domain
+
+1. A test allows us to check whether our data are from a white noise process, which has a flat spectrum, the periodogram of which should only vary due to random fluctuations. Given a series of length N let 
+$M= max \{ n \sim Z : N/2 \}$ and define $P_k := \sum_{p=1}^k I(\omega_p)$ for $k \leq M$. Moreover, let$Ck:= P_k/P_M$. A plot of$C_K$ against $k/M$ is called the cumulative periodogram.If the data-generating process $X(t)$ is white noise, the cumulative spectrum should resemble a line of unit slope through the origin. The test statistic suggested is the maximum absolute horizontal distance between the observed cumulative spectrum and the line $y=x$. This defines the test statistic $D$. Tables exist of critical values, but for practical purposes if testing at the $5\%$ significance level values of $D$ above $D_c:=1.358/\sqrt{M-1}$ would reject the null hypothesis that the series is a realization of white noise. The R command spectrum (or spec.pgram) and cumsum are helpful in the application of the test.
+
+(a) Using the rnorm command in R generate 120 observations from the standard Normal distribution. Create the raw periodogram for your series, and provide a plot of the cumulative periodogram. Hence perform the above test to determine whether the observed series appears to be consistent with a realization from white noise, stating clearly your test statistic and conclusion. (2 marks)
+
+```{r}
+set.seed(421)
+x <- rnorm(120,0,1)
+p <- spec.pgram(x, log = "no")
+C <- cumsum(p$spec)
+plot(C)
+lines(seq(1,60),seq(1,60), col = "red")
+D <- 1.358/sqrt(59)
+tes <- 0
+for (i in 1:60){
+  curr <- abs(C[i]-i)
+  if (curr > tes){
+    tes <- curr
+    max_C <- C[i]
+    max_i <- i
+  }
+}
+show(tes)
+show(D)
+```
+As we can see the largest horizontal distance is approx. 5.8, while the 5%-significance level of the test statistic is approx. 0.18, meaning we would reject the hypothesis that it comes from white noise. 
+
+(b) The dataset "star.dat" gives a record of the luminosity of a star, recorded over 600 consecutive nights. Create the raw periodogram for this series. Create the cumulative periodogram for this series.(2 marks)
+```{r}
+dat <- read.csv("star.dat")
+dat <- as.ts(dat)
+p2 <- spec.pgram(dat, log = "no")
+C2 <- cumsum(p2$spec)
+plot(C2)
+```
+
+
+(c) Perform the test to determine whether the series appears to be a realization from a white noise process. State clearly your test statistic, and the conclusion. (2 marks)
+```{r}
+tes2 <- 0
+for (i in 1:length(C2)){
+  curr <- abs(C2[i]-i)
+  if (curr > tes2){
+    tes2 <- curr
+  }
+}
+show(tes2)
+```
+tes2 is the absolute horizontal distance between $y=x$ and cumulative periodogram. As we can see, the value of the test statistic is much larger than the value at 95%-significance level of the test. Meaning we can state clearly that the series is not from a white noise process.
+
+
+(d) Plot the acf up to lag 50 of the star luminosity data. From this plot, approximate what appears to be the wavelength of the main periodic component in the series. Use this to estimate what maybe the important contributing frequency to the spectrum of the series. (2 marks)
+```{r}
+acf(dat,lag.max = 50)
+```
+It seems like the wavelength of the acf is approx. 28. Meaning the frequency $\omega = 2\pi/28 \approx 0.23$
+
+(e) Compare your estimate in (d) with the largest component from the periodogram. (1 mark)
+```{r}
+p2$freq[which.max(p2$spec)]*2*pi
+```
+As we can see, the largest component of the periodogram is around frequency 0.22, so it's very similar.
+
+2. A seismograph is a device for measuring the progress of an earth-quake.  The machine involves a pendulum that will oscillate in response to ground movements due to an earthquake (see for example www.britannica.com/science/seismograph for details).  A seismograph records a zigzag trace that shows how the ground shakes beneath the instrument as a result of the quake. Modern seismographs can greatly magnify these ground motions and respond to strong earthquakes from anywhere in the world. The file "Kobe.csv" contains seismograph readings (recording vertical acceleration in $nm/sec^2$) of the Kobe earthquake, recorded at Tasmania University, Australia on 16 January 1995. The measurements started at 20:56:51 (GMT) and continued for 51 minutes at 1 second intervals.
+
+(a) Read the data set into R, and coerce the data into a time series object. Plot the data. Plot the acf of the series up to lag 50, and comment on what you observe. (2 marks)
+```{r}
+dat2 <- read.csv("Kobe.csv")
+dat2 <- as.ts(dat2)
+plot(dat2)
+acf(dat2,lag.max = 50)
+```
+From the plot we can see that it is frequently fluctuating around 0, moreover the amplitude of the frequency increases at around 1500 observations and has a spike just before and after 2000 observations, before it decreases again. From the acf we can see it acts like a damped cosine wave with wavelength around 22. 
+
+(b) Plot the raw (i.e., without taking logarithms) periodogram for the time series. Comment on what you observe. (2 marks)
+```{r}
+p3 <- spec.pgram(dat2, log = "no")
+```
+From the raw periodogram we can observe that it has a clear spike at low frequency and cuts of quickly, with a second spike at a slightly higher frequency of much lower magnitude.
+
+(c) Use the raw periodogram to estimate the wavelength of the most important cyclical component in the time series.  Comment on your findings in relation to the acf plot of the series. (2 marks)
+```{r}
+1/(p3$freq[which.max(p3$spec)])
+```
+by taking the inverse of the most aparent component from the periodogram we get a wavelength at around 20.5, while from the acf we observed a wavelength of approx. 22, thus they seem to agree to some degree. 
+
+(d) Recalling that the raw periodogram is not a consistent estimator of the spectral density, smooth the raw periodogram here. Clarifying your working, estimate the amplitude of the most important frequency contributing to the spectrum of the data. (3 marks)
+```{r}
+p4 <- spec.pgram(dat2, log = "no", spans = c(20,100))
+max(p4$spec)
+```
+The amplitude of the most important frequency is approx. $7.72*10^8$.   
+
+(e) State clearly any reservations you may have regarding your estimate in (d). (2 marks)
+When trying different smoothing spans I get very different plots. E.g. if the span is c(1500,1500) the spectrum looks like a cosine wave with wavelength $2\pi$. Also as the span increases, the amplitude of the most important frequency decreases.
